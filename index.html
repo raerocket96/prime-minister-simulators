@@ -1,0 +1,242 @@
+<script type="text/javascript">
+        var gk_isXlsx = false;
+        var gk_xlsxFileLookup = {};
+        var gk_fileData = {};
+        function loadFileData(filename) {
+        if (gk_isXlsx && gk_xlsxFileLookup[filename]) {
+            try {
+                var workbook = XLSX.read(gk_fileData[filename], { type: 'base64' });
+                var firstSheetName = workbook.SheetNames[0];
+                var worksheet = workbook.Sheets[firstSheetName];
+
+                // Convert sheet to JSON to filter blank rows
+                var jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1, blankrows: false, defval: '' });
+                // Filter out blank rows (rows where all cells are empty, null, or undefined)
+                var filteredData = jsonData.filter(row =>
+                    row.some(cell => cell !== '' && cell !== null && cell !== undefined)
+                );
+
+                // Convert filtered JSON back to CSV
+                var csv = XLSX.utils.aoa_to_sheet(filteredData); // Create a new sheet from filtered array of arrays
+                csv = XLSX.utils.sheet_to_csv(csv, { header: 1 });
+                return csv;
+            } catch (e) {
+                console.error(e);
+                return "";
+            }
+        }
+        return gk_fileData[filename] || "";
+        }
+        </script><!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Prime Minister Simulator: Christoffer</title>
+  <script src="https://cdn.jsdelivr.net/npm/react@18.2.0/umd/react.development.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/react-dom@18.2.0/umd/react-dom.development.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/babel-standalone@7.22.9/babel.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.153.0/build/three.min.js"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body { margin: 0; overflow: hidden; }
+    #three-canvas { position: absolute; top: 0; left: 0; z-index: 0; }
+    .ui-overlay { position: absolute; z-index: 1; }
+  </style>
+</head>
+<body class="bg-gray-900 text-gray-100">
+  <div id="three-canvas"></div>
+  <div id="root" class="ui-overlay w-full h-full"></div>
+  <script type="text/babel">
+    const { useState, useEffect } = React;
+
+    // Three.js setup
+    function initThreeJS() {
+      const scene = new THREE.Scene();
+      const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+      const renderer = new THREE.WebGLRenderer({ antialias: true });
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      document.getElementById('three-canvas').appendChild(renderer.domElement);
+
+      // Orb
+      const orbGeometry = new THREE.SphereGeometry(0.5, 32, 32);
+      const orbMaterial = new THREE.MeshBasicMaterial({ color: 0x00ffff, transparent: true, opacity: 0.8 });
+      const orb = new THREE.Mesh(orbGeometry, orbMaterial);
+      scene.add(orb);
+
+      // Ambient chamber lighting
+      const ambientLight = new THREE.AmbientLight(0x404040);
+      scene.add(ambientLight);
+      const pointLight = new THREE.PointLight(0xffffff, 0.5, 100);
+      pointLight.position.set(5, 5, 5);
+      scene.add(pointLight);
+
+      // Chamber walls (simplified reflective surfaces)
+      const wallGeometry = new THREE.PlaneGeometry(20, 20);
+      const wallMaterial = new THREE.MeshBasicMaterial({ color: 0x111111, side: THREE.DoubleSide });
+      const walls = [
+        new THREE.Mesh(wallGeometry, wallMaterial), // Back
+        new THREE.Mesh(wallGeometry, wallMaterial), // Left
+        new THREE.Mesh(wallGeometry, wallMaterial), // Right
+      ];
+      walls[0].position.z = -10;
+      walls[1].position.x = -10;
+      walls[1].rotation.y = Math.PI / 2;
+      walls[2].position.x = 10;
+      walls[2].rotation.y = -Math.PI / 2;
+      walls.forEach(wall => scene.add(wall));
+
+      camera.position.z = 5;
+
+      return { scene, camera, renderer, orb, pointLight };
+    }
+
+    // Game state and scenarios (same as previous)
+    const scenarios = [
+      {
+        id: 1,
+        text: "A leaked report suggests Norway is hiding an extraterrestrial artifact. The media is in a frenzy, and Russia demands transparency. Your advisors urge a strong denial, but the orb pulses softly, urging you to 'prepare them.' What do you do?",
+        choices: [
+          { text: "Deny the rumors outright, blaming foreign disinformation.", nextId: 2, impact: { stability: -10, orbTrust: -5 } },
+          { text: "Acknowledge the speculation but redirect focus to national unity.", nextId: 3, impact: { stability: 5, orbTrust: 5 } },
+          { text: "Hint at a greater truth, promising a future announcement.", nextId: 4, impact: { stability: -20, orbTrust: 10 } },
+        ],
+      },
+      {
+        id: 2,
+        text: "Your denial calms the public, but Russia escalates, deploying ships near Norwegian waters. The orb hums: 'Fear blinds. Trust builds.' Do you respond with force or diplomacy?",
+        choices: [
+          { text: "Deploy naval forces to assert strength.", nextId: 5, impact: { stability: -15, orbTrust: -10 } },
+          { text: "Propose a diplomatic summit to de-escalate.", nextId: 6, impact: { stability: 10, orbTrust: 5 } },
+        ],
+      },
+      {
+        id: 3,
+        text: "Your call for unity stabilizes Norway, but Europe’s leaders demand a private briefing. The orb glows: 'Truth is a seed, not a storm.' Do you share partial information or keep silent?",
+        choices: [
+          { text: "Share vague details to gain allies.", nextId: 7, impact: { stability: 5, orbTrust: 0 } },
+          { text: "Refuse to disclose anything, citing national security.", nextId: 8, impact: { stability: -5, orbTrust: 5 } },
+        ],
+      },
+      {
+        id: 4,
+        text: "Your hint at a greater truth sparks global wonder, but America threatens sanctions unless you reveal more. The orb whispers: 'Prepare, not provoke.' What’s your next move?",
+        choices: [
+          { text: "Invite global scientists to study 'unrelated' phenomena.", nextId: 9, impact: { stability: 0, orbTrust: 10 } },
+          { text: "Double down, teasing a global address.", nextId: 10, impact: { stability: -25, orbTrust: 15 } },
+        ],
+      },
+      {
+        id: 5,
+        text: "Military escalation leads to conflict. The orb dims, and Norway faces isolation. You’ve protected the secret, but at what cost? (Game Over)",
+        choices: [],
+      },
+      {
+        id: 6,
+        text: "Diplomacy eases tensions. The orb pulses warmly, and you feel humanity inching toward readiness. (Continue?)",
+        choices: [{ text: "Restart", nextId: 1, impact: { stability: 0, orbTrust: 0 } }],
+      },
+      {
+        id: 7,
+        text: "Allies are intrigued, but leaks spread. The orb hums: 'Trust is fragile.' You’ve gained time, but the world watches closely. (Continue?)",
+        choices: [{ text: "Restart", nextId: 1, impact: { stability: 0, orbTrust: 0 } }],
+      },
+      {
+        id: 8,
+        text: "Silence strengthens Norway’s resolve, but isolates you globally. The orb glows: 'You are enough.' A new path opens. (Continue?)",
+        choices: [{ text: "Restart", nextId: 1, impact: { stability: 0, orbTrust: 0 } }],
+      },
+      {
+        id: 9,
+        text: "Scientists uncover hints of the orb’s nature, sparking global curiosity. The orb resonates: 'They begin to see.' You’ve prepared the world. (Victory)",
+        choices: [{ text: "Restart", nextId: 1, impact: { stability: 0, orbTrust: 0 } }],
+      },
+      {
+        id: 10,
+        text: "Your bold address inspires millions, but triggers panic and sanctions. The orb fades: 'Too soon.' Chaos engulfs Norway. (Game Over)",
+        choices: [],
+      },
+    ];
+
+    // Main Game Component
+    function Game() {
+      const [currentScenarioId, setCurrentScenarioId] = useState(1);
+      const [stability, setStability] = useState(100);
+      const [orbTrust, setOrbTrust] = useState(50);
+      const [threeJS, setThreeJS] = useState(null);
+
+      useEffect(() => {
+        const three = initThreeJS();
+        setThreeJS(three);
+
+        const animate = () => {
+          requestAnimationFrame(animate);
+          three.orb.rotation.y += 0.01;
+          three.renderer.render(three.scene, three.camera);
+        };
+        animate();
+
+        const handleResize = () => {
+          three.camera.aspect = window.innerWidth / window.innerHeight;
+          three.camera.updateProjectionMatrix();
+          three.renderer.setSize(window.innerWidth, window.innerHeight);
+        };
+        window.addEventListener('resize', handleResize);
+
+        return () => {
+          window.removeEventListener('resize', handleResize);
+          three.renderer.domElement.remove();
+        };
+      }, []);
+
+      useEffect(() => {
+        if (threeJS) {
+          // Update orb glow based on orbTrust
+          const glowIntensity = orbTrust / 100;
+          threeJS.orb.material.color.setRGB(0, glowIntensity, glowIntensity);
+          threeJS.orb.material.opacity = 0.6 + glowIntensity * 0.4;
+
+          // Update chamber lighting based on stability
+          const lightIntensity = stability / 100;
+          threeJS.pointLight.intensity = 0.3 + lightIntensity * 0.7;
+        }
+      }, [stability, orbTrust, threeJS]);
+
+      const currentScenario = scenarios.find((s) => s.id === currentScenarioId);
+
+      const handleChoice = (choice) => {
+        setCurrentScenarioId(choice.nextId);
+        setStability((prev) => Math.max(0, Math.min(100, prev + choice.impact.stability)));
+        setOrbTrust((prev) => Math.max(0, Math.min(100, prev + choice.impact.orbTrust)));
+      };
+
+      return (
+        <div className="flex flex-col items-center justify-center h-full p-6">
+          <div className="bg-gray-800 bg-opacity-75 rounded-lg p-6 max-w-2xl w-full">
+            <h1 className="text-3xl font-bold text-center mb-4">Prime Minister Simulator: Christoffer</h1>
+            <div className="flex justify-between mb-4">
+              <p className="text-sm">Stability: {stability}%</p>
+              <p className="text-sm">Orb Trust: {orbTrust}%</p>
+            </div>
+            <p className="text-lg mb-6">{currentScenario.text}</p>
+            <div className="space-y-4">
+              {currentScenario.choices.map((choice, index) => (
+                <button
+                  key={index}
+                  onClick={() => handleChoice(choice)}
+                  className="w-full p-3 bg-blue-600 hover:bg-blue-700 rounded text-left transition duration-300 ease-in-out transform hover:scale-105"
+                >
+                  {choice.text}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // Render the game
+    ReactDOM.render(<Game />, document.getElementById('root'));
+  </script>
+</body>
+</html>
